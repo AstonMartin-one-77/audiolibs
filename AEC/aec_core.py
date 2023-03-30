@@ -8,6 +8,7 @@ class ComplexBuf:
         self.im = np.ndarray(shape=(size), dtype='int32')
         self.im.fill(0)
 
+
 class AEC:
     def __init__(self, blockSz, filterSz):
         self.blockSz = blockSz
