@@ -129,16 +129,14 @@ class RingBuffer:
                 self.buf[:len(frame)-endSpace] = frame[endSpace:]
                 self.wIdx = len(frame)-endSpace
             else:
-                # TODO: exception
-                pass
+                raise BufferError("Buffer size is not enough(1)")
         else:
             free = self.rIdx-self.wIdx-1
             if free >= len(frame):
                 self.buf[self.wIdx:self.wIdx+len(frame)] = frame
                 self.wIdx += len(frame)
             else:
-                # TODO: exception
-                pass
+                raise BufferError("Buffer size is not enough(2)")
     
     def getPlenum(self):
         if self.wIdx >= self.rIdx:
@@ -175,57 +173,80 @@ class AEC_Align:
     def __init__(self):
         self.spRingBuf = RingBuffer(48000) # 1 sec delay if it has 48kHz
         self.micRingBuf = RingBuffer(48000) # 1 sec delay if it has 48kHz
+        self.rawMicBuf = RingBuffer(48000)
+        self.dMicBuf = RingBuffer(48000)
         self.blockSz = 4096
         self.filterSz = 4096
-        self.alignStepSz = 128
+        self.alignStepSz = 2
         self.aec = AEC(self.blockSz, self.filterSz, 0.032, 0.01, 0.98)
         self.micBuf = np.ndarray(self.filterSz+self.alignStepSz, dtype="float")
         self.isAlign = False
-        self.cnvVal = 0
+        self.threshold = 0.2
+        self.cnvVal = self.threshold
 
     def setMic(self, mic):
-        if self.isAlign == False:
-            cycles = len(mic) // self.alignStepSz
-            for cycle in range(cycles):
-                start = cycle*self.alignStepSz
-                end = start+self.alignStepSz
-                self.micBuf[self.filterSz:] = mic[start:end]
-                cnvRes = np.convolve(self.micBuf[self.alignStepSz:], self.spRingBuf.buf[:self.filterSz],"valid")
-                crrCnv = cnvRes[0] / self.filterSz
-                if crrCnv > 0.2:
-                    if crrCnv >= self.cnvVal:
-                        self.cnvVal = crrCnv
-                        self.micBuf[:self.filterSz] = self.micBuf[self.alignStepSz:]
-                    else:
-                        self.micRingBuf.set(self.micBuf)
-                        self.micRingBuf.set(mic[end:])
-                        self.isAlign = True
-                        break
-                else:
-                    self.micBuf[:self.filterSz] = self.micBuf[self.alignStepSz:]
-            
-            remain = len(mic)-cycles*self.alignStepSz
-            if self.isAlign == False:
-                self.micBuf[self.filterSz:self.filterSz+remain] = mic[len(mic)-remain:]
-                cnvRes = np.convolve(self.micBuf[remain:remain+self.filterSz], self.spRingBuf.buf[:self.filterSz],"valid")
-                crrCnv = cnvRes[0] / self.filterSz
-                if crrCnv > 0.2:
-                    if crrCnv >= self.cnvVal:
-                        self.cnvVal = crrCnv
-                        self.micBuf[:self.filterSz] = self.micBuf[remain:remain+self.filterSz]
-                    else:
-                        self.micRingBuf.set(self.micBuf)
-                        self.micRingBuf.set(mic[end:])
-                        self.isAlign = True
-                else:
-                    self.micBuf[:self.filterSz] = self.micBuf[remain:remain+self.filterSz]
+        try:
+            self.micRingBuf.set(mic)
+        except BufferError:
+            print("MIC sync buffer overflow")
+            raise IOError("Input mic stream problem")
 
     def setSp(self, sp):
-        self.spRingBuf.set(sp)
+        try:
+            self.spRingBuf.set(sp)
+        except BufferError:
+            print("Speaker sync buffer overflow")
+            raise IOError("Input speaker stream problem or the absence of correlation")
 
     def echoCancel(self):
-        if self.isAlign == True:
-            sp = self.spRingBuf.get(self.blockSz)
-            mic = self.micRingBuf.get(self.blockSz)
-            if sp != None and mic != None:
-                self.aec.echoCancel(mic, sp)
+        if self.isAlign == False:
+            curSpSz = self.spRingBuf.getPlenum()
+            curMicSz = self.micRingBuf.getPlenum()
+            halfBufSz = int(len(self.spRingBuf.buf)/2)
+            
+            if len(self.spRingBuf.buf) != len(self.micRingBuf.buf):
+                raise IOError("echoCalcel(): buf size in not the same")
+            
+            if curSpSz > halfBufSz and curMicSz > halfBufSz:
+                delay = 0
+                for spIdx in range(0, halfBufSz-self.filterSz, self.alignStepSz):
+                    micIdx = halfBufSz-self.filterSz-spIdx
+                    cnvRes = np.corrcoef(self.spRingBuf.buf[spIdx:spIdx+self.filterSz], self.micRingBuf.buf[micIdx:micIdx+self.filterSz])
+                    if cnvRes[0,1] > self.cnvVal:
+                        self.cnvVal = cnvRes[0,1]
+                        delay = micIdx-spIdx
+                if self.cnvVal > self.threshold:
+                    self.isAlign = True
+                    if delay > 0:
+                        self.micRingBuf.get(delay)
+                    else:
+                        self.spRingBuf.get(-delay)
+                    
+                    for i in range(0, halfBufSz-delay, self.blockSz):
+                        self.echoCancel()
+                        
+                    print("delay: " + str(delay))
+                    print("Corr: " + str(self.cnvVal))
+                    
+                else:
+                    print("Correlation problem")
+                    raise IOError("echoCancel(): correlation is not found")
+        else:
+            if self.micRingBuf.getPlenum() >= self.blockSz and self.spRingBuf.getPlenum() >= self.blockSz:
+                mic = self.micRingBuf.get(self.blockSz)
+                if mic is not None:
+                    sp = self.spRingBuf.get(self.blockSz)
+                    if sp is None:
+                        raise IOError("Speaker stream is broken: no available data")
+                    self.rawMicBuf.set(mic)
+                    res = self.aec.echoCancel(mic, sp)
+                    self.dMicBuf.set(res)
+                    return res
+                else:
+                    raise IOError("Mic stream is broken: no available data")
+
+    def getMicRaw(self):
+        return self.rawMicBuf.get(4096)
+    
+    def getMicRes(self):
+        return self.dMicBuf.get(4096)
