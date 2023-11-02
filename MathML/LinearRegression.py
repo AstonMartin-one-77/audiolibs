@@ -1,6 +1,13 @@
 
 import numpy as np
 
+
+# Gradient Descent for linear regression:
+#       X[m,n] - m - number of examples, n is number of features
+#       w[n] - weights of linear regression
+#       y[m] - target outputs
+#       dj_dw[j] = (np.dot(X[i,:],w)+b - y[i])*X[j], j 0...n-1
+#       dj_db = (np.dot(X[i,:],w)+b - y[i])
 def linear_gradient_descent(X:np.array, y:np.array, w:np.array, b):
     m = X.shape[0]
     n = X.shape[1]
@@ -20,9 +27,11 @@ def linear_cost(X:np.array, y:np.array, w:np.array, b):
         cost += (np.dot(X[i,:], w) + b - y[i])**2
     return cost/(2*m)
 
-def linear_scale(x:np.array):
-    factor = len(x)/(2*np.sum(np.abs(x)))
-    return x*factor
+def linear_scale(X:np.array):
+    mu = np.sum(X, axis=0)/X.shape[0]
+    diff = X - mu
+    std = np.sqrt(np.sum(diff**2,axis=0)/X.shape[0])
+    return diff/std
 
 def linear_model_fit(X_t:np.array, y:np.array, w_init:np.array, b_init, lerning_rate, iterations:int):
     cost_stat = []
@@ -51,5 +60,13 @@ if __name__ == "__main__":
     print(b_out)
     for i in range(X_t.shape[0]):
         print(f"prediction: {np.dot(X_t[i], w_out) + b_out:0.2f}, target value: {y_t[i]}")
+
+    X_norm = linear_scale(X_t)
+    w_norm, b_norm, stat = linear_model_fit(X_norm,y_t,w_init,b_init,1.0e-1,1000)
+    print(stat)
+    print(w_norm)
+    print(b_norm)
+    for i in range(X_t.shape[0]):
+        print(f"prediction: {np.dot(X_norm[i], w_norm) + b_norm:0.2f}, target value: {y_t[i]}")
 
 
