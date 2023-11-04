@@ -1,0 +1,10 @@
+* Create few standard tasks for ML and linear math
+* Try different activation functions in few tasks and more math
+* Make comressor of picture with KNN algorithm
+* Video recognition
+* Make simple examples of deep learning algorithm (what about spyder algorithm?)
+* Create deep learning algorithm (what about spyder algorithm? and some trading application?)
+
+Audio processing:
+* Volterra Filter
+* Optimizations for AEC for neon platform and HiFi4
