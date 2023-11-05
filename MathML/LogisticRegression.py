@@ -6,12 +6,12 @@ def sigmoid(z):
 
 # Logistic loss function allows to have "bowl" curve with one minimum
 # Note: istead of direct derivative of sigmoid function
-def loss_logistic_function(X:np.array, y:np.array, w:np.array, b, aggr=0):
+def loss_logistic_function(X:np.array, y:np.array, w:np.array, b):
     f_x = 1/(1 + np.exp(-(X @ w + b)))
     return -y*np.log(f_x) - (1-y)*np.log(1-f_x)
 
 def cost_logistic_function(X:np.array, y:np.array, w:np.array, b, aggr=0):
-    loss = loss_logistic_function(X, y, w, b, aggr)
+    loss = loss_logistic_function(X, y, w, b)
     return np.sum(loss)/len(loss) + np.sum(aggr*w)/(2*len(loss))
 
 def grad_logistic_function(X, y, w, b, aggr=0):
