@@ -52,9 +52,9 @@ class NeuralNetwork:
             tmp *= self.dSigma(immZ[invLayerIdx-1])
             invLayerIdx -= 1
         dWs = tmp @ x.T / x.size
-        dWs *= (1+np.random.randn()*noise)
+        # dWs *= (1+np.random.randn()*noise)
         Ws.append(self.Ws[invLayerIdx] - dWs*aggr)
-        dbs *= (1+np.random.randn()*noise)
+        # dbs *= (1+np.random.randn()*noise)
         dbs = np.sum(tmp, axis=1, keepdims=True) / x.size
         bs.append(self.bs[invLayerIdx] - dbs*aggr)
         Ws.reverse()
@@ -87,7 +87,7 @@ def nnTraining_graph(NNW:NeuralNetwork, x, y, iterations=10000, aggr=3.5, noise=
         for i in range(graphStep):
             NNW.train(x, y, aggr=aggr, noise=noise)
         output,_,_ = NNW.process(x)
-        # ax.plot(output[0],output[1], lw=2, color=(0.78, 0.89, 0.7, 0.15))
+        ax.plot(output[0],output[1], lw=2, color=(0.78, 0.89, 0.7, 0.15))
     
     for i in range(iterations-cycles*graphStep):
         NNW.train(x, y, aggr=aggr, noise=noise)
@@ -96,6 +96,12 @@ def nnTraining_graph(NNW:NeuralNetwork, x, y, iterations=10000, aggr=3.5, noise=
     ax.plot(output[0],output[1], lw=2.5, color="tomato")
 
 if __name__ == "__main__":
+
+    # Let's test our Neural Network
+    NW = NeuralNetwork([(1,24),(24,32),(32,2)])
+    t,y = lissajous_curve()
+    nnTraining_graph(NW,t,y,iterations=40000,aggr=3.1,noise=0.8,graphStep=100)
+    plt.show()
 
     # import tensorflow as tf
 
@@ -115,8 +121,38 @@ if __name__ == "__main__":
     # t,y = lissajous_curve()
     # tfModel.fit(t.T,y.T,epochs=2000)
 
+    # import DenseLayer as dl
+
+    # input = dl.InputLayer(units=1)
+    # dl1 = dl.DenseLayer(units=24)
+    # input.setFLink(dl1)
+    # dl1.setBLink(input)
+    # dl2 = dl.DenseLayer(units=32)
+    # dl1.setFLink(dl2)
+    # dl2.setBLink(dl1)
+    # output = dl.DenseLayer(units=2)
+    # dl2.setFLink(output)
+    # output.setBLink(dl2)
+    # dl1.setOptimizer(dl.BaseOptimizer(lrate=3.1))
+    # dl2.setOptimizer(dl.BaseOptimizer(lrate=3.1))
+    # output.setOptimizer(dl.BaseOptimizer(lrate=3.1))
+
+    # dl1.compile()
+    # dl2.compile()
+    # output.compile()
+
+    # t,y = lissajous_curve()
+
+    # print(np.sum((input.forward(t)-y)**2)/len(y))
+
+    # for i in range(40000):
+    #     res = input.forward(t)
+    #     output.backward(2*(res-y))
+
+    # print(np.sum((input.forward(t)-y)**2)/len(y))
+
     # t_n,y_n = lissajous_curve(N=150)
-    # y_pred = tfModel.predict(t_n.T)
+    # y_pred = input.forward(t_n)
     # y_pred = y_pred.T
 
     # fig,ax = plt.subplots(figsize=(8, 8))
@@ -129,33 +165,3 @@ if __name__ == "__main__":
     # ax.plot(y_pred[0],y_pred[1], lw=2.5, color="tomato")
     # plt.show()
 
-    import DenseLayer as dl
-
-    input = dl.InputLayer(units=1)
-    dl1 = dl.DenseLayer(units=96)
-    input.setFLink(dl1)
-    dl1.setBLink(input)
-    output = dl.DenseLayer(units=2)
-    dl1.setFLink(output)
-    output.setBLink(dl1)
-    dl1.setOptimizer(dl.BaseOptimizer(lrate=3.5))
-    output.setOptimizer(dl.BaseOptimizer(lrate=3.5))
-
-    dl1.compile()
-    output.compile()
-
-    t,y = lissajous_curve()
-
-    print(np.sum((input.forward(t)-y)**2)/len(y))
-
-    for i in range(20000):
-        res = input.forward(t)
-        output.backward(2*(res-y))
-
-    print(np.sum((input.forward(t)-y)**2)/len(y))
-
-    # Let's test our Neural Network
-    # NW = NeuralNetwork([(1,24),(24,32),(32,2)])
-    # t,y = lissajous_curve()
-    # nnTraining_graph(NW,t,y,iterations=40000,aggr=3.1,noise=0.8,graphStep=100)
-    # plt.show()

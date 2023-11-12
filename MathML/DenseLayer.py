@@ -27,10 +27,10 @@ class BaseOptimizer:
         self.lrate = lrate
     
     def dW(self, g:np.array):
-        return -self.lrate*g
+        return -g*self.lrate
     
     def db(self, g:np.array):
-        return -self.lrate*np.sum(g, axis=1, keepdims=True)
+        return -np.sum(g, axis=1, keepdims=True)*self.lrate
 
 class InputLayer(BaseLayer):
     def __init__(self, units: int):
@@ -63,15 +63,20 @@ class DenseLayer(BaseLayer):
     #       dZdA: W(n)
     #       dAdZ: activation dependent
     def backward(self, d:np.array):
-        dAdZ = self.dG(d)
+        dAdZ = d*self.dG(self.saveZ)
         dZdA = dAdZ.T @ self.W
-        self.W += self.optimizer.dW(dAdZ @ self.saveAn.T) / dAdZ.size
-        self.b += self.optimizer.db(dAdZ) / dAdZ.size
+        # self.W += self.optimizer.dW(dAdZ @ self.prevA.T)
+        dW = dAdZ @ self.prevA.T / 100
+        self.W -= dW * 3.1
+        # self.b += self.optimizer.db(dAdZ)
+        db = np.sum(dAdZ, axis=1, keepdims=True) / 100
+        self.b -= db * 3.1
         self.bLayer.backward(dZdA.T)
 
     def forward(self, aVal:np.array):
-        self.saveAn = aVal
-        output = self.G(self.W @ aVal + self.b)
+        self.prevA = aVal
+        self.saveZ = self.W @ aVal + self.b
+        output = self.G(self.saveZ)
         if self.fLayer is not None:
             return self.fLayer.forward(output)
         return output
@@ -106,3 +111,51 @@ class AdamOptimizer(BaseOptimizer):
         v_hat = self.v / (1 - np.power(self.b2, self.i))
         self.i += 1
         return -self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
+
+
+if __name__ == "__main__":
+
+    import matplotlib.pyplot as plt
+    import NeuralNetwork_generic as NNg
+
+    input = InputLayer(units=1)
+    dl1 = DenseLayer(units=24)
+    input.setFLink(dl1)
+    dl1.setBLink(input)
+    dl2 = DenseLayer(units=32)
+    dl1.setFLink(dl2)
+    dl2.setBLink(dl1)
+    output = DenseLayer(units=2)
+    dl2.setFLink(output)
+    output.setBLink(dl2)
+    dl1.setOptimizer(BaseOptimizer(lrate=0.031))
+    dl2.setOptimizer(BaseOptimizer(lrate=0.031))
+    output.setOptimizer(BaseOptimizer(lrate=0.031))
+
+    dl1.compile()
+    dl2.compile()
+    output.compile()
+
+    t,y = NNg.lissajous_curve()
+
+    print(np.sum((input.forward(t)-y)**2)/len(y))
+
+    for i in range(40000):
+        res = input.forward(t)
+        output.backward(2*(res-y))
+
+    print(np.sum((input.forward(t)-y)**2)/len(y))
+
+    t_n,y_n = NNg.lissajous_curve(N=150)
+    y_pred = input.forward(t_n)
+    y_pred = y_pred.T
+
+    fig,ax = plt.subplots(figsize=(8, 8))
+    fig.set_facecolor("slategray")
+    ax.set_xlim([0,1])
+    ax.set_ylim([0,1])
+    ax.set_aspect(1)
+    ax.set_facecolor("lightslategray")
+    ax.plot(y_n[0],y_n[1], lw=1.5, color="white")
+    ax.plot(y_pred[0],y_pred[1], lw=2.5, color="tomato")
+    plt.show()
