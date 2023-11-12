@@ -31,9 +31,6 @@ class NeuralNetwork:
         output = self.process(x)
         return np.sum((y - output)**2)/len(output)
     
-    def __dAdZ__(self, z):
-        return np.cosh(z)**(-2)
-    
     def __dCdA__(self,y,an):
         return 2*(an - y)
     
@@ -64,7 +61,8 @@ class NeuralNetwork:
         self.Ws = Ws
         bs.reverse()
         self.bs = bs
-        
+    
+    
 
 
 
@@ -99,37 +97,62 @@ def nnTraining_graph(NNW:NeuralNetwork, x, y, iterations=10000, aggr=3.5, noise=
 
 if __name__ == "__main__":
 
-    import tensorflow as tf
+    # import tensorflow as tf
 
-    tfModel = tf.keras.Sequential(
-        [
-            tf.keras.Input(shape=(1,)),
-            tf.keras.layers.Dense(units=96, activation="relu"),
-            tf.keras.layers.Dense(units=64, activation="sigmoid"),
-            tf.keras.layers.Dense(units=32, activation="sigmoid"),
-            tf.keras.layers.Dense(units=2, activation="sigmoid")
-        ]
-    )
-    tfModel.summary()
+    # tfModel = tf.keras.Sequential(
+    #     [
+    #         tf.keras.Input(shape=(1,)),
+    #         tf.keras.layers.Dense(units=96, activation="relu"),
+    #         tf.keras.layers.Dense(units=64, activation="sigmoid"),
+    #         tf.keras.layers.Dense(units=32, activation="sigmoid"),
+    #         tf.keras.layers.Dense(units=2, activation="sigmoid")
+    #     ]
+    # )
+    # tfModel.summary()
 
-    tfModel.compile(loss=tf.keras.losses.MeanSquaredError(),
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=0.007))
+    # tfModel.compile(loss=tf.keras.losses.MeanSquaredError(),
+    #                 optimizer=tf.keras.optimizers.Adam(learning_rate=0.005))
+    # t,y = lissajous_curve()
+    # tfModel.fit(t.T,y.T,epochs=2000)
+
+    # t_n,y_n = lissajous_curve(N=150)
+    # y_pred = tfModel.predict(t_n.T)
+    # y_pred = y_pred.T
+
+    # fig,ax = plt.subplots(figsize=(8, 8))
+    # fig.set_facecolor("slategray")
+    # ax.set_xlim([0,1])
+    # ax.set_ylim([0,1])
+    # ax.set_aspect(1)
+    # ax.set_facecolor("lightslategray")
+    # ax.plot(y_n[0],y_n[1], lw=1.5, color="white")
+    # ax.plot(y_pred[0],y_pred[1], lw=2.5, color="tomato")
+    # plt.show()
+
+    import DenseLayer as dl
+
+    input = dl.InputLayer(units=1)
+    dl1 = dl.DenseLayer(units=96)
+    input.setFLink(dl1)
+    dl1.setBLink(input)
+    output = dl.DenseLayer(units=2)
+    dl1.setFLink(output)
+    output.setBLink(dl1)
+    dl1.setOptimizer(dl.BaseOptimizer(lrate=3.5))
+    output.setOptimizer(dl.BaseOptimizer(lrate=3.5))
+
+    dl1.compile()
+    output.compile()
+
     t,y = lissajous_curve()
-    tfModel.fit(t.T,y.T,epochs=2000)
 
-    t_n,y_n = lissajous_curve(N=150)
-    y_pred = tfModel.predict(t_n.T)
-    y_pred = y_pred.T
+    print(np.sum((input.forward(t)-y)**2)/len(y))
 
-    fig,ax = plt.subplots(figsize=(8, 8))
-    fig.set_facecolor("slategray")
-    ax.set_xlim([0,1])
-    ax.set_ylim([0,1])
-    ax.set_aspect(1)
-    ax.set_facecolor("lightslategray")
-    ax.plot(y_n[0],y_n[1], lw=1.5, color="white")
-    ax.plot(y_pred[0],y_pred[1], lw=2.5, color="tomato")
-    plt.show()
+    for i in range(20000):
+        res = input.forward(t)
+        output.backward(2*(res-y))
+
+    print(np.sum((input.forward(t)-y)**2)/len(y))
 
     # Let's test our Neural Network
     # NW = NeuralNetwork([(1,24),(24,32),(32,2)])
