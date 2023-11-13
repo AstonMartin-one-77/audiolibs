@@ -112,7 +112,7 @@ class AdamOptimizer(BaseOptimizer):
         m_hat = self.m / (1 - np.power(self.b1, self.i))
         v_hat = self.v / (1 - np.power(self.b2, self.i))
         self.i += 1
-        return -self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
+        return self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
 
 
 if __name__ == "__main__":
@@ -130,9 +130,9 @@ if __name__ == "__main__":
     output = DenseLayer(units=2)
     dl2.setFLink(output)
     output.setBLink(dl2)
-    dl1.setOptimizer(BaseOptimizer(lrate=0.031))
-    dl2.setOptimizer(BaseOptimizer(lrate=0.031))
-    output.setOptimizer(BaseOptimizer(lrate=0.031))
+    dl1.setOptimizer(AdamOptimizer(lrate=0.0031))
+    dl2.setOptimizer(AdamOptimizer(lrate=0.0031))
+    output.setOptimizer(AdamOptimizer(lrate=0.0031))
 
     # NW = NeuralNetwork([(1,5),(5,4),(4,2)])
     # w0 = np.array([[ 0.06332294],       [-1.64162638],       [ 0.13457888],       [ 0.4365871 ],       [ 0.79491503]])
