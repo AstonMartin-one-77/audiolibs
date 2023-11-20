@@ -1,27 +1,33 @@
 
 import numpy as np
 
+# Base Layer class: base API implementation
 class BaseLayer:
     def __init__(self, units:int):
         self.units = units
-        self.W = None
-        self.b = None
-        self.bLayer = None
-        self.fLayer = None
+        self.W = None # Matrix of weights [self.units by self.fLayer.getUnits()]
+        self.b = None # Vector of bias values [self.units]
+        self.bLayer = None # Previous (back) layer
+        self.fLayer = None # Next (forward) layer
         self.optimizer = None
 
+    # Get number of units in layer
     def getUnits(self):
         return self.units
 
+    # Backpropagation (recursive)
     def backward(self, d:np.array):
         pass
 
+    # Predict output with current weights and input matrix (recursive)
     def forward(self, aVal:np.array):
         pass
-
+    
+    # Compile layer: init weights of layer (needs link to back layer)
     def compile(self):
         pass
 
+# Base Optimizer class: base API implementation
 class BaseOptimizer:
     def __init__(self, lrate:float = 0.001):
         self.lrate = lrate
@@ -32,27 +38,29 @@ class BaseOptimizer:
     def db(self, g:np.array):
         return np.sum(g, axis=1, keepdims=True)*self.lrate
 
+# Input Layer class: first layer of network
 class InputLayer(BaseLayer):
     def __init__(self, units: int):
         super().__init__(units)
 
+    # Set link to the next layer (forward path only)
     def setFLink(self, fLayer:BaseLayer):
         self.fLayer = fLayer
 
     def forward(self, aVal:np.array):
         return self.fLayer.forward(aVal)
     
-
+# Dense Layer class: main layer of network
 class DenseLayer(BaseLayer):
     def __init__(self, units:int, type:str = "sigmoid", optimizer:BaseOptimizer = BaseOptimizer(0.031)):
         super().__init__(units=units)
-        if "sigmoid" == type:
+        if "sigmoid" == type: # Sigmoid activation function
             self.G = lambda z : 1 / (1 + np.exp(-z))
             self.dG = lambda z : np.cosh(z/2)**(-2) / 4
-        elif "relu" == type:
+        elif "relu" == type: # ReLU activation function
             self.G = lambda z : np.maximum(0, z)
             self.dG = lambda z : np.where(z > 0, 1, 0)
-        else:
+        else:  # Linear activation function
             self.G = lambda z : z
             self.dG = lambda z : 1
         self.optimizer = optimizer
@@ -78,15 +86,19 @@ class DenseLayer(BaseLayer):
             return self.fLayer.forward(output)
         return output
 
+    # Set link to the previous (backward path) layer
     def setBLink(self, bLayer:BaseLayer):
         self.bLayer = bLayer
     
+    # Set link to the next (forward path) layer
     def setFLink(self, fLayer:BaseLayer):
         self.fLayer = fLayer
     
+    # Set optimizer (optional)
     def setOptimizer(self, optimizer:BaseOptimizer):
         self.optimizer = optimizer
 
+    # Compile layer (init weights and biases)
     def compile(self, W:np.array = None, b:np.array = None):
         if W is not None:
             self.W = W
@@ -97,6 +109,7 @@ class DenseLayer(BaseLayer):
         else:
             self.b = np.random.randn(self.units, 1) / 2
 
+# Adam Optimizer class
 class AdamOptimizer(BaseOptimizer):
     def __init__(self, lrate:float = 0.001, b1:float = 0.9, b2:float = 0.999):
         super().__init__(lrate=lrate)
@@ -120,27 +133,33 @@ class AdamOptimizer(BaseOptimizer):
         self.i += 1
         return self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
 
+# Neural Network Flow class
 class NeuralNetwork_flow:
     def __init__(self, layersSequence:list):
         assert type(layersSequence[0]) == InputLayer
         self.layers = layersSequence
         self.inLayer = prevLayer = self.layers[0] # Input layer
+        # Set links between different layers (forward/backward path)
         for i in range(1, len(self.layers)):
             prevLayer.setFLink(self.layers[i])
             self.layers[i].setBLink(prevLayer)
             prevLayer = self.layers[i]
-        self.outLayer = self.layers[-1]
+        self.outLayer = self.layers[-1] # Output layer
+        # Compile all layers except first (input layer)
         for i in range(1, len(self.layers)):
             self.layers[i].compile()
 
+    # Train Neural Network with x (input) and y (target)
     def train(self, x:np.array, y:np.array, iterations=10000):
         for i in range(iterations):
             itrRes = self.inLayer.forward(x)
             self.outLayer.backward(2*(y-itrRes))
     
+    # Get error
     def error(self, x, y):
         return np.sum((self.inLayer.forward(x)-y)**2)/len(y)
     
+    # Predict values by using current states of layers in network flow
     def predict(self, x):
         return self.inLayer.forward(x)
 
