@@ -3,13 +3,14 @@ import numpy as np
 
 # Base Layer class: base API implementation
 class BaseLayer:
-    def __init__(self, units:int):
+    def __init__(self, units:int, tau:float = 1e-3):
         self.units = units
         self.W = None # Matrix of weights [self.units by self.fLayer.getUnits()]
         self.b = None # Vector of bias values [self.units]
         self.bLayer = None # Previous (back) layer
         self.fLayer = None # Next (forward) layer
         self.optimizer = None
+        self.TAU = tau
 
     # Get number of units in layer
     def getUnits(self):
@@ -26,6 +27,15 @@ class BaseLayer:
     # Compile layer: init weights of layer (needs link to back layer)
     def compile(self):
         pass
+
+    def getWeights(self):
+        return self.W
+    
+    def softUpdate(self, W):
+        self.W = self.W*self.TAU + (1 - self.TAU)*W
+
+    def update(self, W):
+        self.W = W
 
 # Base Optimizer class: base API implementation
 class BaseOptimizer:
@@ -162,6 +172,10 @@ class NeuralNetwork_flow:
     # Predict values by using current states of layers in network flow
     def predict(self, x):
         return self.inLayer.forward(x)
+    
+    def getLayers(self) -> list[BaseLayer]:
+        return self.layers
+
 
 if __name__ == "__main__":
 
