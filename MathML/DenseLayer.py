@@ -35,8 +35,8 @@ class BaseLayer:
         return self.b
     
     def softUpdate(self, W, b):
-        self.W = self.W*self.TAU + (1 - self.TAU)*W
-        self.b = self.b*self.TAU + (1 - self.TAU)*b
+        self.W = (1.0 - self.TAU)*self.W + self.TAU*W
+        self.b = (1.0 - self.TAU)*self.b + self.TAU*b
 
     def update(self, W:np.array, b:np.array):
         self.W = np.copy(W)
@@ -119,11 +119,12 @@ class DenseLayer(BaseLayer):
         if W is not None:
             self.W = W
         else:
-            self.W = np.random.randn(self.units, self.bLayer.getUnits()) / 8
+            self.W = np.random.randn(self.units, self.bLayer.getUnits()).astype(np.float32) * np.sqrt(2/(self.bLayer.getUnits()))
         if b is not None:
             self.b = b
         else:
-            self.b = np.random.randn(self.units, 1) / 8
+            self.b = np.zeros((self.units, 1), dtype="float32")
+            # self.b = np.random.randn(self.units, 1).astype(np.float32) * np.sqrt(2/self.bLayer.getUnits())
 
 # Adam Optimizer class
 class AdamOptimizer(BaseOptimizer):
@@ -181,7 +182,7 @@ class NeuralNetwork_flow:
     def train(self, x:np.array, y:np.array, iterations=10000):
         for i in range(iterations):
             itrRes = self.inLayer.forward(x)
-            self.outLayer.backward(2*(y-itrRes))
+            self.outLayer.backward(2*(y-itrRes)/len(y))
     
     # Get error
     def error(self, x, y):
@@ -230,8 +231,8 @@ if __name__ == "__main__":
 
     NNf = NeuralNetwork_flow([
                 InputLayer(units=1),
-                DenseLayer(units=24, type="linear", optimizer=AdamOptimizer(0.005)),
-                DenseLayer(units=32, type="sigmoid", optimizer=AdamOptimizer(0.0031)),
+                DenseLayer(units=24, type="linear", optimizer=AdamOptimizer(0.001)),
+                DenseLayer(units=32, type="sigmoid", optimizer=AdamOptimizer(0.001)),
                 DenseLayer(units=2)])
 
     t,y = NNg.lissajous_curve()

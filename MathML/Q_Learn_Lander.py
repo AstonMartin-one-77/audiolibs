@@ -1,7 +1,7 @@
 
 from collections import deque, namedtuple
 
-import MathML.DenseLayer as dl
+import DenseLayer as dl
 import numpy as np
 import gym
 import PIL.Image
@@ -40,30 +40,31 @@ num_actions = env.action_space.n
 print(f'State Shape: {state_size}')
 print(f'Number of actions: {num_actions}')
 
-INNER_UNITS = 64
+INNER_UNITS_1 = 64
+INNER_UNITS_2 = INNER_UNITS_1
 
 targetQ_NNf = dl.NeuralNetwork_flow([
                 dl.InputLayer(units=state_size[0]),
-                dl.DenseLayer(units=INNER_UNITS, type="relu"),
-                dl.DenseLayer(units=INNER_UNITS, type="relu"),
+                dl.DenseLayer(units=INNER_UNITS_1, type="relu"),
+                dl.DenseLayer(units=INNER_UNITS_2, type="relu"),
                 dl.DenseLayer(units=num_actions, type='linear')])
 
 Q_NNf = dl.NeuralNetwork_flow([
                 dl.InputLayer(units=state_size[0]),
-                dl.DenseLayer(units=INNER_UNITS, type="relu", optimizer=dl.AdamOptimizer(0.001)),
-                dl.DenseLayer(units=INNER_UNITS, type="relu", optimizer=dl.AdamOptimizer(0.001)),
+                dl.DenseLayer(units=INNER_UNITS_1, type="relu", optimizer=dl.AdamOptimizer(0.001)),
+                dl.DenseLayer(units=INNER_UNITS_2, type="relu", optimizer=dl.AdamOptimizer(0.001)),
                 dl.DenseLayer(units=num_actions, type='linear', optimizer=dl.AdamOptimizer(0.001))])
 
 Q_network = Sequential([
     Input(shape=state_size),
-    Dense(units=INNER_UNITS, activation='relu'),
-    Dense(units=INNER_UNITS, activation='relu'),
+    Dense(units=INNER_UNITS_1, activation='relu'),
+    Dense(units=INNER_UNITS_2, activation='relu'),
     Dense(units=num_actions, activation='linear')])
 
 targetQ_network = Sequential([
     Input(shape=state_size),
-    Dense(units=INNER_UNITS, activation='relu'),
-    Dense(units=INNER_UNITS, activation='relu'),
+    Dense(units=INNER_UNITS_1, activation='relu'),
+    Dense(units=INNER_UNITS_2, activation='relu'),
     Dense(units=num_actions, activation='linear')])
 
 optimizer = Adam(learning_rate=1e-3)
@@ -135,7 +136,7 @@ def compute_train_step(experiences, gamma,
     if isPrint == False:
         # Step of Q-network training
         tmp_Q_predicts = Q_network.predict(states)
-        transferMtx = np.zeros(tmp_Q_predicts.shape)
+        transferMtx = np.zeros(tmp_Q_predicts.shape, dtype="float32")
         for i in range(len(actions)):
             transferMtx[actions[i],i] = 1
         Q_output = np.array([tmp_Q_predicts[actions[i],i] for i in range(len(actions))])
@@ -172,9 +173,9 @@ trgtQNN_lrs = targetQ_NNf.getLayers()
 for i in range(1, len(qNN_lrs)):
         tf_Qw_lr = tf_Qweights[(i-1)*2]
         tf_Qb_lr = tf_Qweights[(i-1)*2+1].reshape((-1,1))
-        qNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
-        trgtQNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
-        # trgtQNN_lrs[i].update(qNN_lrs[i].getWeights(), qNN_lrs[i].getBias())
+        # qNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
+        # trgtQNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
+        trgtQNN_lrs[i].update(qNN_lrs[i].getWeights(), qNN_lrs[i].getBias())
 
 for i in range(num_episodes):
 
@@ -186,10 +187,10 @@ for i in range(num_episodes):
     for t in range(max_num_timesteps):
         # From the current state S choose an action A using an ε-greedy policy
         state_qn = np.expand_dims(state, axis=0)  # state needs to be the right shape for the q_network
-        # q_values = Q_network(state_qn)
-        # action = utils.get_action(q_values, epsilon)
-        q_values = Q_NNf.predict(state_qn.T)
-        action = get_action(q_values, epsilon)
+        q_values = Q_network(state_qn)
+        action = utils.get_action(q_values, epsilon)
+        # q_values = Q_NNf.predict(state_qn.T)
+        # action = get_action(q_values, epsilon)
 
         # Take action A and receive reward R and the next state S'
         next_state, reward, done, _, _ = env.step(action)
@@ -208,8 +209,8 @@ for i in range(num_episodes):
             
             # Set the y targets, perform a gradient descent step,
             # and update the network weights.
-            # agent_learn(experiences, GAMMA)
-            compute_train_step(experiences, GAMMA, Q_NNf, targetQ_NNf)
+            agent_learn(experiences, GAMMA)
+            # compute_train_step(experiences, GAMMA, Q_NNf, targetQ_NNf)
             # lossValue = compute_loss(experiences,GAMMA,Q_network,targetQ_network)
         
         state = next_state.copy()
