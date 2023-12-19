@@ -19,6 +19,7 @@ from tensorflow.keras.optimizers import Adam
 
 # Set the random seed for TensorFlow
 tf.random.set_seed(utils.SEED)
+random.seed(utils.SEED)
 
 NUM_STEPS_FOR_UPDATE = 4
 MEMORY_SIZE = int(1e5)
@@ -39,28 +40,30 @@ num_actions = env.action_space.n
 print(f'State Shape: {state_size}')
 print(f'Number of actions: {num_actions}')
 
+INNER_UNITS = 64
+
 targetQ_NNf = dl.NeuralNetwork_flow([
                 dl.InputLayer(units=state_size[0]),
-                dl.DenseLayer(units=64, type="relu", optimizer=dl.AdamOptimizer(0.005)),
-                dl.DenseLayer(units=64, type="relu", optimizer=dl.AdamOptimizer(0.0031)),
+                dl.DenseLayer(units=INNER_UNITS, type="relu"),
+                dl.DenseLayer(units=INNER_UNITS, type="relu"),
                 dl.DenseLayer(units=num_actions, type='linear')])
 
 Q_NNf = dl.NeuralNetwork_flow([
                 dl.InputLayer(units=state_size[0]),
-                dl.DenseLayer(units=64, type="relu", optimizer=dl.AdamOptimizer(0.005)),
-                dl.DenseLayer(units=64, type="relu", optimizer=dl.AdamOptimizer(0.0031)),
-                dl.DenseLayer(units=num_actions, type='linear')])
+                dl.DenseLayer(units=INNER_UNITS, type="relu", optimizer=dl.AdamOptimizer(0.001)),
+                dl.DenseLayer(units=INNER_UNITS, type="relu", optimizer=dl.AdamOptimizer(0.001)),
+                dl.DenseLayer(units=num_actions, type='linear', optimizer=dl.AdamOptimizer(0.001))])
 
 Q_network = Sequential([
     Input(shape=state_size),
-    Dense(units=64, activation='relu'),
-    Dense(units=64, activation='relu'),
+    Dense(units=INNER_UNITS, activation='relu'),
+    Dense(units=INNER_UNITS, activation='relu'),
     Dense(units=num_actions, activation='linear')])
 
 targetQ_network = Sequential([
     Input(shape=state_size),
-    Dense(units=64, activation='relu'),
-    Dense(units=64, activation='relu'),
+    Dense(units=INNER_UNITS, activation='relu'),
+    Dense(units=INNER_UNITS, activation='relu'),
     Dense(units=num_actions, activation='linear')])
 
 optimizer = Adam(learning_rate=1e-3)
@@ -68,17 +71,24 @@ optimizer = Adam(learning_rate=1e-3)
 # Store experiences as named tuples
 experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 
-@tf.function
 def agent_learn(experiences, gamma):
     # Calculate the loss
     with tf.GradientTape() as tape:
         loss = compute_loss(experiences, gamma, Q_network, targetQ_network)
     
+    # tf.print(loss)
+
     # Get the gradients of the loss with respect to the weights.
     gradients = tape.gradient(loss, Q_network.trainable_variables)
 
+    # for grad in gradients:
+    #     for i in range(grad.shape[0]):
+    #         tf.print(grad[i])
+
     # Update the weights of the q_network.
     optimizer.apply_gradients(zip(gradients, Q_network.trainable_variables))
+
+    # tf.print(compute_loss(experiences, gamma, Q_network, targetQ_network))
 
     # update the weights of target q_network
     utils.update_target_network(Q_network, targetQ_network)
@@ -98,30 +108,47 @@ def compute_loss(experiences, gamma, q_network, target_q_network):
     q_values = tf.gather_nd(q_values, tf.stack([tf.range(q_values.shape[0]),
                                                 tf.cast(actions, tf.int32)], axis=1))
     
-    # Compute the loss
+    # Compute the loss: y, output => 2*(y_targets - q_values) => q_values = output[actions]
     return MSE(y_targets, q_values)
+
+def get_action(q_values, epsilon=0.0):
+    if random.random() > epsilon:
+        return np.argmax(q_values)
+    else:
+        return random.choice(np.arange(4))
 
 def compute_train_step(experiences, gamma, 
                        Q_network:dl.NeuralNetwork_flow, 
-                       targetQ_network:dl.NeuralNetwork_flow):
+                       targetQ_network:dl.NeuralNetwork_flow, isPrint:bool=False):
     # Unpack the mini-batch of experience tuples
-    states = np.array([e.state for e in experiences], dtype="float32").T
-    actions = np.array([e.action for e in experiences], dtype="float32")
-    rewards = np.array([e.reward for e in experiences], dtype="float32")
-    next_states = np.array([e.next_state for e in experiences], dtype="float32").T
-    done_vals = np.array([e.done for e in experiences], dtype="uint8")
+    states, actions, rewards, next_states, done_vals = experiences
+    states = states.numpy().T
+    actions = actions.numpy().astype(np.uint8)
+    rewards = rewards.numpy()
+    next_states = next_states.numpy().T
+    done_vals = done_vals.numpy()
     # Compute max Q^(s,a)
     predict_state = targetQ_network.predict(next_states)
     max_qsa = np.max(predict_state, axis=0)
     # Set y = R if episode terminates, otherwise set y = R + γ max Q^(s,a).
     y_targets = rewards + gamma * max_qsa * (1 - done_vals)
-    Q_network.train(states, y_targets, 1)
-    qLayers = Q_network.getLayers()
-    trgtQLayers = targetQ_network.getLayers()
-    for i in range(1, len(qLayers)):
-        trgtQLayers[i].softUpdate(qLayers[i].getWeights())
-
-
+    if isPrint == False:
+        # Step of Q-network training
+        tmp_Q_predicts = Q_network.predict(states)
+        transferMtx = np.zeros(tmp_Q_predicts.shape)
+        for i in range(len(actions)):
+            transferMtx[actions[i],i] = 1
+        Q_output = np.array([tmp_Q_predicts[actions[i],i] for i in range(len(actions))])
+        # print(np.sum((y_targets - Q_output)**2)/len(y_targets))
+        Q_network.backprop((2/len(y_targets))*(y_targets-Q_output)*transferMtx)
+        qLayers = Q_network.getLayers()
+        trgtQLayers = targetQ_network.getLayers()
+        for i in range(1, len(qLayers)):
+            trgtQLayers[i].softUpdate(qLayers[i].getWeights(), qLayers[i].getBias())
+    else:
+        tmp_Q_predicts = Q_network.predict(states)
+        Q_output = np.array([tmp_Q_predicts[actions[i],i] for i in range(len(actions))])
+        print(np.sum((y_targets - Q_output)**2)/len(y_targets))
 
 start = time.time()
 
@@ -137,12 +164,17 @@ epsilon = 1.0     # initial ε value for ε-greedy policy
 memory_buffer = deque(maxlen=MEMORY_SIZE)
 
 # Set the target network weights equal to the Q-Network weights
-# targetQ_network.set_weights(Q_network.get_weights())
+targetQ_network.set_weights(Q_network.get_weights())
+tf_Qweights = Q_network.get_weights()
 
 qNN_lrs = Q_NNf.getLayers()
 trgtQNN_lrs = targetQ_NNf.getLayers()
 for i in range(1, len(qNN_lrs)):
-        trgtQNN_lrs[i].update(qNN_lrs[i].getWeights())
+        tf_Qw_lr = tf_Qweights[(i-1)*2]
+        tf_Qb_lr = tf_Qweights[(i-1)*2+1].reshape((-1,1))
+        qNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
+        trgtQNN_lrs[i].update(tf_Qw_lr.T, tf_Qb_lr)
+        # trgtQNN_lrs[i].update(qNN_lrs[i].getWeights(), qNN_lrs[i].getBias())
 
 for i in range(num_episodes):
 
@@ -155,8 +187,9 @@ for i in range(num_episodes):
         # From the current state S choose an action A using an ε-greedy policy
         state_qn = np.expand_dims(state, axis=0)  # state needs to be the right shape for the q_network
         # q_values = Q_network(state_qn)
+        # action = utils.get_action(q_values, epsilon)
         q_values = Q_NNf.predict(state_qn.T)
-        action = utils.get_action(q_values, epsilon)
+        action = get_action(q_values, epsilon)
 
         # Take action A and receive reward R and the next state S'
         next_state, reward, done, _, _ = env.step(action)
@@ -170,19 +203,23 @@ for i in range(num_episodes):
 
         if update:
             # Sample random mini-batch of experience tuples (S,A,R,S') from D
-            # experiences = utils.get_experiences(memory_buffer)
-            experiences = random.sample(memory_buffer, k=64)
+            experiences = utils.get_experiences(memory_buffer)
+            # experiences = random.sample(memory_buffer, k=65)
             
             # Set the y targets, perform a gradient descent step,
             # and update the network weights.
-            #agent_learn(experiences, GAMMA)
+            # agent_learn(experiences, GAMMA)
             compute_train_step(experiences, GAMMA, Q_NNf, targetQ_NNf)
+            # lossValue = compute_loss(experiences,GAMMA,Q_network,targetQ_network)
         
         state = next_state.copy()
         total_points += reward
         if done:
             break
     
+    # print(f"{i} iteration: {compute_loss(experiences,GAMMA,Q_network,targetQ_network)}")
+    # compute_train_step(experiences, GAMMA, Q_NNf, targetQ_NNf,isPrint=True)
+
     total_point_history.append(total_points)
     av_latest_points = np.mean(total_point_history[-num_p_av:])
     

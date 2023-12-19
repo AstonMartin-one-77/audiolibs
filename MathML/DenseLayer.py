@@ -31,11 +31,16 @@ class BaseLayer:
     def getWeights(self):
         return self.W
     
-    def softUpdate(self, W):
+    def getBias(self):
+        return self.b
+    
+    def softUpdate(self, W, b):
         self.W = self.W*self.TAU + (1 - self.TAU)*W
+        self.b = self.b*self.TAU + (1 - self.TAU)*b
 
-    def update(self, W):
-        self.W = W
+    def update(self, W:np.array, b:np.array):
+        self.W = np.copy(W)
+        self.b = np.copy(b)
 
 # Base Optimizer class: base API implementation
 class BaseOptimizer:
@@ -46,7 +51,8 @@ class BaseOptimizer:
         return g*self.lrate
     
     def db(self, g:np.array):
-        return np.sum(g, axis=1, keepdims=True)*self.lrate
+        bGrad = np.sum(g, axis=1, keepdims=True)
+        return bGrad*self.lrate
 
 # Input Layer class: first layer of network
 class InputLayer(BaseLayer):
@@ -113,11 +119,11 @@ class DenseLayer(BaseLayer):
         if W is not None:
             self.W = W
         else:
-            self.W = np.random.randn(self.units, self.bLayer.getUnits()) / 2
+            self.W = np.random.randn(self.units, self.bLayer.getUnits()) / 8
         if b is not None:
             self.b = b
         else:
-            self.b = np.random.randn(self.units, 1) / 2
+            self.b = np.random.randn(self.units, 1) / 8
 
 # Adam Optimizer class
 class AdamOptimizer(BaseOptimizer):
@@ -127,8 +133,11 @@ class AdamOptimizer(BaseOptimizer):
         self.b2 = b2
         self.m = 0
         self.v = 0
-        self.e = 0.001
+        self.e = 1e-7
         self.i = 1
+        self.bm = 0
+        self.bv = 0
+        self.bi = 1
     
     # 1 step: Moving average of gradient (first estimator)
     # 2 step: Moving of squared gradient (second estimator)
@@ -141,6 +150,15 @@ class AdamOptimizer(BaseOptimizer):
         m_hat = self.m / (1 - np.power(self.b1, self.i))
         v_hat = self.v / (1 - np.power(self.b2, self.i))
         self.i += 1
+        return self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
+
+    def db(self, g:np.array):
+        bGrad = np.sum(g, axis=1, keepdims=True)
+        self.bm = self.b1 * self.bm + (1 - self.b1)*bGrad
+        self.bv = self.b2 *self.bv + (1 - self.b2)*(bGrad**2)
+        m_hat = self.bm / (1 - np.power(self.b1, self.bi))
+        v_hat = self.bv / (1 - np.power(self.b2, self.bi))
+        self.bi += 1
         return self.lrate * m_hat / (np.sqrt(v_hat) + self.e)
 
 # Neural Network Flow class
@@ -172,6 +190,9 @@ class NeuralNetwork_flow:
     # Predict values by using current states of layers in network flow
     def predict(self, x):
         return self.inLayer.forward(x)
+    
+    def backprop(self, err):
+        self.outLayer.backward(err)
     
     def getLayers(self) -> list[BaseLayer]:
         return self.layers
